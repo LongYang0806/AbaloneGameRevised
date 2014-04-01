@@ -6,6 +6,7 @@ import static org.abalone.client.AbaloneConstants.BTurn;
 import static org.abalone.client.AbaloneConstants.BoardColNum;
 import static org.abalone.client.AbaloneConstants.BoardRowNum;
 import static org.abalone.client.AbaloneConstants.E;
+import static org.abalone.client.AbaloneConstants.I;
 import static org.abalone.client.AbaloneConstants.GAMEOVER;
 import static org.abalone.client.AbaloneConstants.JUMP;
 import static org.abalone.client.AbaloneConstants.S;
@@ -14,6 +15,7 @@ import static org.abalone.client.AbaloneConstants.W;
 import static org.abalone.client.AbaloneConstants.WTurn;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -110,7 +112,7 @@ public class AbalonePresenter {
 	private String currentTurn; 							// currentTurn must not be null, explanation down.
 	private List<ArrayList<Integer>> jumps;		// used to store all the jumps in current round.
 	private AbaloneState abaloneState;
-	private int[] lastJump = new int[5]; // {startX, startY, endX, endY, pieceColor{0/1}}
+	private int[] lastJump = new int[5]; 			// {startX, startY, endX, endY, pieceColor{0/1}}
 	private List<ArrayList<String>> currentBoard;
 	private int heldX;
 	private int heldY;
@@ -139,7 +141,7 @@ public class AbalonePresenter {
 		jumps = Lists.<ArrayList<Integer>>newArrayList();
 		if(updateUI.getState().isEmpty()){
 			// WP should finish the initialization.
-			if(myTurn.isPresent() && myTurn.equals(WTurn)){
+			if(myTurn.isPresent() && myTurn.get().equals(WTurn)){
 				container.sendMakeMove(abaloneLogic.getInitialMove(playerIds));
 			}
 			return;
@@ -149,14 +151,15 @@ public class AbalonePresenter {
 		// should be before starting game, then it should let WP pass the inital moves as above.
 		for(Operation operation : updateUI.getLastMove()){
 			if(operation instanceof SetTurn){
-				currentTurn = playerIds.indexOf(((SetTurn)operation).getPlayerId()) == 0 ?WTurn : BTurn;
+				currentTurn = playerIds.indexOf(((SetTurn)operation).getPlayerId()) == 0 ? WTurn : BTurn;
 			}
 		}
 		abaloneState = 
 				AbaloneState.gameApiState2AbaloneState(updateUI.getState(), currentTurn, playerIds);
 		if(updateUI.isViewer()){
 			// TODO: need to be verified after adding the player change frame in the graphics.
-			view.setPlayerState(abaloneState.getBoard(), null, UNDERGOING);
+			view.setPlayerState(abaloneState.getBoard(), 
+					new boolean[BoardRowNum][BoardColNum], UNDERGOING);
 			return;
 		}
 		if(updateUI.isAiPlayer()){
@@ -168,7 +171,7 @@ public class AbalonePresenter {
 		view.setPlayerState(abaloneState.getBoard(),
 				getEnableSquares(abaloneState.getBoard(), abaloneState.getTurn()), UNDERGOING);
 		// this is my turn, so I need to make the move.
-		if(myTurn.get().equals(currentTurn)){
+		if(myTurn.isPresent() && myTurn.get().equals(currentTurn)){
 			view.toHoldOnePiece(abaloneState.getBoard(), getEnableSquares(abaloneState.getBoard(), 
 					myTurn.get()), !jumps.isEmpty(), myTurn.get(), UNDERGOING);
 		}
@@ -183,6 +186,7 @@ public class AbalonePresenter {
 		heldX = x;
 		heldY = y;
 		boolean[][] placableMatrix = getPlacableMatrix(x, y);
+		Collections.sort(jumps, jumpComparator);
 		List<ArrayList<String>> boardAfterJumps = abaloneState.applyJumpOnBoard(jumps).getBoard();
 		view.toPlaceOnePiece(boardAfterJumps, placableMatrix, !jumps.isEmpty(), 
 				abaloneState.getTurn(), UNDERGOING);
@@ -192,7 +196,8 @@ public class AbalonePresenter {
 		if(x < 0 || y < 0 || x > BoardRowNum || y > BoardColNum) {
 			throw new RuntimeException("index for held piece should be valid!");
 		}
-		
+		// currentBoard is the board which before this jump, apply all the previous jumps.
+		Collections.sort(jumps, jumpComparator);
 		currentBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
 		int piece = abaloneState.getTurn().equals(WTurn) ? 0 : 1;
 		List<ArrayList<String>> appliedJumpsBoard;
@@ -217,6 +222,7 @@ public class AbalonePresenter {
 					}
 				}
 				holdableMatrix = getEnableSquares(abaloneState.getBoard(), abaloneState.getTurn());
+				Collections.sort(jumps, jumpComparator);
 				appliedJumpsBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
 				view.toHoldOnePiece(appliedJumpsBoard, holdableMatrix, 
 						!jumps.isEmpty(), abaloneState.getTurn(), UNDERGOING);
@@ -231,6 +237,7 @@ public class AbalonePresenter {
 					// add the jump into the jumps directly.
 					jumps.add(thisJump);
 					holdableMatrix = getEnableSquares(abaloneState.getBoard(), abaloneState.getTurn());
+					Collections.sort(jumps, jumpComparator);
 					appliedJumpsBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
 					view.toHoldOnePiece(appliedJumpsBoard, holdableMatrix, 
 							!jumps.isEmpty(), abaloneState.getTurn(), UNDERGOING);
@@ -241,6 +248,7 @@ public class AbalonePresenter {
 					 */
 					abaloneMessage = generateAllJumps(x, y, piece);
 					holdableMatrix = getEnableSquares(abaloneState.getBoard(), abaloneState.getTurn());
+					Collections.sort(jumps, jumpComparator);
 					appliedJumpsBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
 					view.toHoldOnePiece(appliedJumpsBoard, holdableMatrix, 
 							!jumps.isEmpty(), abaloneState.getTurn(), abaloneMessage);
@@ -249,11 +257,10 @@ public class AbalonePresenter {
 		}
 	}
 	
-	public void finishAllPlacing() {
+	public void finishAllPlacing(boolean isGameOver) {
+		Collections.sort(jumps, jumpComparator);
 		currentBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
-		boolean isGameOver = abaloneMessage.equals(GAMEOVER) ? true : false;
 		String nextPlayerId = yourPlayerIndex == 0 ? playerIds.get(1) : playerIds.get(0);
-		
 		List<Operation> moves = Lists.<Operation>newArrayList(
 				new SetTurn(nextPlayerId),
 				new Set(BOARD, currentBoard), 
@@ -262,106 +269,128 @@ public class AbalonePresenter {
 			moves.add(new EndGame(playerIds.get(yourPlayerIndex)));
 		}
 		container.sendMakeMove(moves);
-		jumps.clear();
-		lastJump = null;
+		jumps = Lists.<ArrayList<Integer>>newArrayList();
+		lastJump = new int[5];
 	}
 	
+	@SuppressWarnings("unchecked")
 	private String generateAllJumps(int x, int y, int piece) {
 		String message = "";
-		Direction direction = getJumpDirection(jumps);
+		List<ArrayList<Integer>> jumpList = Lists.<ArrayList<Integer>>newArrayList(
+				Lists.<Integer>newArrayList(heldX, heldY, x, y, myTurn.get().equals(WTurn) ? 0 : 1));
+		Direction direction = getJumpDirection(jumpList);
 		switch(direction) {
 			case LEFT_HORIZONTAL:
 				while(y >= 0 && 
 						(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x, y + 2, x, y, piece));
+					jumps.add(Lists.newArrayList(x, y + 2, x, y, 
+							squareColor2PieceInt(currentBoard.get(x).get(y + 2))));
 					y = y - 2;
 				}
 				if(y >= 0 && currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x, y + 2, x, y, piece));
+					jumps.add(Lists.newArrayList(x, y + 2, x, y, 
+							squareColor2PieceInt(currentBoard.get(x).get(y + 2))));
 					message = UNDERGOING;
 				}
-				if(y < 0 || currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x, y + 2, x, y + 1, piece));
+				if(y < 0 || currentBoard.get(x).get(y).equals(I) || currentBoard.get(x).get(y).equals(S)){
+					jumps.add(Lists.newArrayList(x, y + 2, x, y + 1, 
+							squareColor2PieceInt(currentBoard.get(x).get(y + 2))));
 					message = GAMEOVER;
 				}
 				break;
 			case RIGHT_HORIZONTAL:
 				while(y < BoardColNum && 
 						(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x, y - 2, x, y, piece));
+					jumps.add(Lists.newArrayList(x, y - 2, x, y, 
+							squareColor2PieceInt(currentBoard.get(x).get(y - 2))));
 					y = y + 2;
 				}
-				if(y < BoardColNum &&  currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x, y - 2, x, y, piece));
+				if(y < BoardColNum && currentBoard.get(x).get(y).equals(E)){
+					jumps.add(Lists.newArrayList(x, y - 2, x, y, 
+							squareColor2PieceInt(currentBoard.get(x).get(y - 2))));
 					message = UNDERGOING;
 				}
-				if(y >= BoardColNum || currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x, y - 2, x, y - 1, piece));
+				if(y >= BoardColNum || currentBoard.get(x).get(y).equals(I) || 
+						currentBoard.get(x).get(y).equals(S)){
+					jumps.add(Lists.newArrayList(x, y - 2, x, y - 1, 
+							squareColor2PieceInt(currentBoard.get(x).get(y - 2))));
 					message = GAMEOVER;
 				}
 				break;
 			case UPPER_LEFT_DIAGONAL:
 				while(x >= 0 && y >= 0 && 
 				(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y + 1))));
 					x = x - 1;
 					y = y - 1;
 				}
 				if(x >= 0 && y >= 0 && currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y + 1))));
 					message = UNDERGOING;
 				}
 				if(currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y + 1))));
 					message = GAMEOVER;
 				}
 				break;
 			case UPPER_RIGHT_DIAGONAL:
 				while(x >= 0 && y < BoardColNum && 
 						(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y - 1))));
 					x = x - 1;
 					y = y + 1;
 				}
 				if(x >= 0 && y < BoardColNum && currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y - 1))));
 					message = UNDERGOING;
 				}
 				if(currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x + 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x + 1).get(y - 1))));
 					message = GAMEOVER;
 				}
 				break;
 			case LOWER_LEFT_DIAGONAL:
 				while(x < BoardRowNum && y >= 0 && 
 						(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y + 1))));
 					x = x + 1;
 					y = y - 1;
 				}
 				if(x < BoardRowNum && y >= 0 && currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y + 1))));
 					message = UNDERGOING;
 				}
 				if(currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y + 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y + 1))));
 					message = GAMEOVER;
 				}
 				break;
 			case LOWER_RIGHT_DIAGONAL:
 				while(x < BoardRowNum && y < BoardColNum && 
 						(currentBoard.get(x).get(y).equals(W) || currentBoard.get(x).get(y).equals(B))){
-					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y - 1))));
 					x = x + 1;
 					y = y + 1;
 				}
 				if(x < BoardRowNum && y < BoardColNum && 
 						currentBoard.get(x).get(y).equals(E)){
-					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y - 1))));
 					message = UNDERGOING;
 				}
 				if(currentBoard.get(x).get(y).equals(S)){
-					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, piece));
+					jumps.add(Lists.newArrayList(x - 1, y - 1, x, y, 
+							squareColor2PieceInt(currentBoard.get(x - 1).get(y - 1))));
 					message = GAMEOVER;
 				}
 				break;
@@ -385,6 +414,10 @@ public class AbalonePresenter {
 		}
 		boolean[][] enableSquare = 
 				new boolean[BoardRowNum][BoardColNum];
+		if(!myTurn.isPresent() || !myTurn.get().equals(turn)){
+			// if not my turn, none should be enabled.
+			return new boolean[BoardRowNum][BoardColNum];
+		}
 		String squareColor = turn.equals(WTurn) ? W : B;
 		if(jumps == null || jumps.isEmpty()){
 			for(int i = 0; i < BoardRowNum; i++){
@@ -394,53 +427,51 @@ public class AbalonePresenter {
 					}
 				}
 			}
+			return enableSquare;
 		} else {
 			// {@code jumps} is not empty.
 			if(jumps.size() >= 3){
+				// you have already made three steps, and your only jump possibility is to cancel previous one.
 				enableSquare[lastJump[2]][lastJump[3]] = true;
 				return enableSquare;
 			}
 			Direction direction = getJumpDirection(jumps);
+			// you can cancel your last jump.
+			enableSquare[lastJump[2]][lastJump[3]] = true;
 			switch(direction){
 				case LEFT_HORIZONTAL:
 					if(board.get(lastJump[0]).get(lastJump[1] + 2).equals(squareColor)){
 						enableSquare[lastJump[0]][lastJump[1] + 2] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				case RIGHT_HORIZONTAL:
 					if(board.get(lastJump[0]).get(lastJump[1] - 2).equals(squareColor)){
 						enableSquare[lastJump[0]][lastJump[1] - 2] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				case UPPER_LEFT_DIAGONAL:
 					if(board.get(lastJump[0] + 1).get(lastJump[1] + 1).equals(squareColor)){
 						enableSquare[lastJump[0] + 1][lastJump[1] + 1] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				case UPPER_RIGHT_DIAGONAL:
 					if(board.get(lastJump[0] + 1).get(lastJump[1] - 1).equals(squareColor)){
 						enableSquare[lastJump[0] + 1][lastJump[1] - 1] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				case LOWER_LEFT_DIAGONAL:
 					if(board.get(lastJump[0] - 1).get(lastJump[1] + 1).equals(squareColor)){
 						enableSquare[lastJump[0] - 1][lastJump[1] + 1] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				case LOWER_RIGHT_DIAGONAL:
 					if(board.get(lastJump[0] - 1).get(lastJump[1] - 1).equals(squareColor)){
 						enableSquare[lastJump[0] - 1][lastJump[1] - 1] = true;
 					}
-					enableSquare[lastJump[2]][lastJump[3]] = true;
 					break;
 				default:
 					break;
-		}
+			}
 		}
 		return enableSquare;
 	}
@@ -451,6 +482,7 @@ public class AbalonePresenter {
 	 * for this being-held piece. Format as following: {{4, 5}, {5, 6}}
 	 */
 	public boolean[][] getPlacableMatrix (int startX, int startY){
+		Collections.sort(jumps, jumpComparator);
 		currentBoard = abaloneState.applyJumpOnBoard(jumps).getBoard();
 		String pieceColor = currentBoard.get(startX).get(startY);
 		boolean[][] placableMatrix = new boolean[BoardRowNum][BoardColNum];
@@ -522,14 +554,14 @@ public class AbalonePresenter {
 				numW++;
 				y = y - 2;
 			}
-			if(y >= 0 && board.get(x).get(y).equals(E)) {
+			if(y >= 0 && board.get(x).get(y).equals(E) && numW <= 3) {
 				placableMatrix[startX][startY - 2] = true;
 			} else if(y >= 0 && board.get(x).get(y).equals(B)) {
 				while(y >= 0 && board.get(x).get(y).equals(B)) {
 					numB++;
 					y = y - 2;
 				}
-				if(numW > numB) {
+				if(numW <= 3 && numW > numB) {
 					placableMatrix[startX][startY - 2] = true;
 				}
 			}
@@ -538,14 +570,14 @@ public class AbalonePresenter {
 				numB++;
 				y = y - 2;
 			}
-			if(y >= 0 && board.get(x).get(y).equals(E)) {
+			if(y >= 0 && board.get(x).get(y).equals(E) && numB <= 3) {
 				placableMatrix[startX][startY - 2] = true;
 			} else if(y >= 0 && board.get(x).get(y).equals(W)) {
 				while(y >= 0 && board.get(x).get(y).equals(W)) {
 					numW++;
 					y = y - 2;
 				}
-				if(numB > numW) {
+				if(numB <= 3 && numB > numW) {
 					placableMatrix[startX][startY - 2] = true;
 				}
 			}
@@ -564,14 +596,14 @@ public class AbalonePresenter {
 				numW++;
 				y = y + 2;
 			}
-			if(y < BoardColNum && board.get(x).get(y).equals(E)) {
+			if(y < BoardColNum && board.get(x).get(y).equals(E) && numW <= 3) {
 				placableMatrix[startX][startY + 2] = true;
 			} else if(y < BoardColNum && board.get(x).get(y).equals(B)) {
 				while(y < BoardColNum && board.get(x).get(y).equals(B)) {
 					numB++;
 					y = y + 2;
 				}
-				if(numW > numB) {
+				if(numW <= 3 && numW > numB) {
 					placableMatrix[startX][startY + 2] = true;
 				}
 			}
@@ -580,14 +612,14 @@ public class AbalonePresenter {
 				numB++;
 				y = y + 2;
 			}
-			if(y < BoardColNum && board.get(x).get(y).equals(E)) {
+			if(y < BoardColNum && board.get(x).get(y).equals(E) && numB <= 3) {
 				placableMatrix[startX][startY + 2] = true;
 			} else if(y < BoardColNum && board.get(x).get(y).equals(W)) {
 				while(y < BoardColNum && board.get(x).get(y).equals(W)) {
 					numW++;
 					y = y + 2;
 				}
-				if(numB > numW) {
+				if(numB <= 3 && numB > numW) {
 					placableMatrix[startX][startY + 2] = true;
 				}
 			}
@@ -607,7 +639,7 @@ public class AbalonePresenter {
 				x = x - 1;
 				y = y - 1;
 			}
-			if(x >= 0 && y >= 0 && board.get(x).get(y).equals(E)) {
+			if(x >= 0 && y >= 0 && board.get(x).get(y).equals(E) && numW <= 3) {
 				placableMatrix[startX - 1][startY - 1] = true;
 			} else if(x >= 0 && y >= 0 && board.get(x).get(y).equals(B)) {
 				while(x >= 0 && y >= 0 && board.get(x).get(y).equals(B)) {
@@ -615,7 +647,7 @@ public class AbalonePresenter {
 					x = x - 1;
 					y = y - 1;
 				}
-				if(numW > numB) {
+				if(numW <= 3 && numW > numB) {
 					placableMatrix[startX - 1][startY - 1] = true;
 				}
 			}
@@ -625,7 +657,7 @@ public class AbalonePresenter {
 				x = x - 1;
 				y = y - 1;
 			}
-			if(x >= 0 && y >= 0 && board.get(x).get(y).equals(E)) {
+			if(x >= 0 && y >= 0 && board.get(x).get(y).equals(E) && numB <= 3) {
 				placableMatrix[startX - 1][startY - 1] = true;
 			} else if(x >= 0 && y >= 0 && board.get(x).get(y).equals(W)) {
 				while(x >= 0 && y >= 0 && board.get(x).get(y).equals(W)) {
@@ -633,7 +665,7 @@ public class AbalonePresenter {
 					x = x - 1;
 					y = y - 1;
 				}
-				if(numB > numW) {
+				if(numB <= 3 && numB > numW) {
 					placableMatrix[startX - 1][startY - 1] = true;
 				}
 			}
@@ -653,7 +685,7 @@ public class AbalonePresenter {
 				x = x - 1;
 				y = y + 1;
 			}
-			if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(E)) {
+			if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(E) && numW <= 3) {
 				placableMatrix[startX - 1][startY + 1] = true;
 			} else if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(B)) {
 				while(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(B)) {
@@ -661,7 +693,7 @@ public class AbalonePresenter {
 					x = x - 1;
 					y = y + 1;
 				}
-				if(numW > numB) {
+				if(numW <= 3 && numW > numB) {
 					placableMatrix[startX - 1][startY + 1] = true;
 				}
 			}
@@ -671,7 +703,7 @@ public class AbalonePresenter {
 				x = x - 1;
 				y = y + 1;
 			}
-			if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(E)) {
+			if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(E) && numB <= 3) {
 				placableMatrix[startX - 1][startY + 1] = true;
 			} else if(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(W)) {
 				while(x >= 0 && y < BoardColNum && board.get(x).get(y).equals(W)) {
@@ -679,7 +711,7 @@ public class AbalonePresenter {
 					x = x - 1;
 					y = y + 1;
 				}
-				if(numB > numW) {
+				if(numB <= 3 && numB > numW) {
 					placableMatrix[startX - 1][startY + 1] = true;
 				}
 			}
@@ -699,16 +731,16 @@ public class AbalonePresenter {
 				x = x + 1;
 				y = y - 1;
 			}
-			if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(E)) {
-				placableMatrix[startX + 1][startX - 1] = true;
+			if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(E) && numW <= 3) {
+				placableMatrix[startX + 1][startY - 1] = true;
 			} else if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(B)) {
 				while(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(B)) {
 					numB++;
 					x = x + 1;
 					y = y - 1;
 				}
-				if(numW > numB) {
-					placableMatrix[startX + 1][startX - 1] = true;
+				if(numW <= 3 && numW > numB) {
+					placableMatrix[startX + 1][startY - 1] = true;
 				}
 			}
 		} else {
@@ -717,16 +749,16 @@ public class AbalonePresenter {
 				x = x + 1;
 				y = y - 1;
 			}
-			if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(E)) {
-				placableMatrix[startX + 1][startX - 1] = true;
+			if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(E) && numB <= 3) {
+				placableMatrix[startX + 1][startY - 1] = true;
 			} else if(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(W)) {
 				while(x < BoardRowNum && y >= 0 && board.get(x).get(y).equals(W)) {
 					numW++;
 					x = x + 1;
 					y = y - 1;
 				}
-				if(numB > numW) {
-					placableMatrix[startX + 1][startX - 1] = true;
+				if(numB <= 3 && numB > numW) {
+					placableMatrix[startX + 1][startY - 1] = true;
 				}
 			}
 		}
@@ -745,7 +777,7 @@ public class AbalonePresenter {
 				x = x + 1;
 				y = y + 1;
 			}
-			if(x < BoardRowNum && y < BoardColNum  && board.get(x).get(y).equals(E)) {
+			if(x < BoardRowNum && y < BoardColNum  && board.get(x).get(y).equals(E) && numW <= 3) {
 				placablaMatrix[startX + 1][startY + 1] = true;
 			} else if(x < BoardRowNum && y < BoardColNum  && board.get(x).get(y).equals(B)) {
 				while(x < BoardRowNum && y < BoardColNum  && board.get(x).get(y).equals(B)) {
@@ -753,7 +785,7 @@ public class AbalonePresenter {
 					x = x + 1;
 					y = y + 1;
 				}
-				if(numW > numB) {
+				if(numW <= 3 && numW > numB) {
 					placablaMatrix[startX + 1][startY + 1] = true;
 				}
 			}
@@ -763,7 +795,7 @@ public class AbalonePresenter {
 				x = x + 1;
 				y = y + 1;
 			}
-			if(x < BoardRowNum && y < BoardColNum && board.get(x).get(y).equals(E)) {
+			if(x < BoardRowNum && y < BoardColNum && board.get(x).get(y).equals(E) && numB <= 3) {
 				placablaMatrix[startX + 1][startY + 1] = true;
 			} else if(x < BoardRowNum && y < BoardColNum && board.get(x).get(y).equals(W)) {
 				while(x < BoardRowNum && y < BoardColNum && board.get(x).get(y).equals(W)) {
@@ -771,7 +803,7 @@ public class AbalonePresenter {
 					x = x + 1;
 					y = y + 1;
 				}
-				if(numB > numW) {
+				if(numB <= 3 && numB > numW) {
 					placablaMatrix[startX + 1][startY + 1] = true;
 				}
 			}
@@ -864,4 +896,16 @@ public class AbalonePresenter {
 			}
 		}
 	};
+	
+	private int squareColor2PieceInt(String squareColor) {
+		if(squareColor == null || squareColor.length() == 0) {
+			return -1;
+		} else if (squareColor.equals(W)) {
+			return 0;
+		} else if (squareColor.equals(B)) {
+			return 1;
+		} else {
+			return -1;
+		}
+	}
 }

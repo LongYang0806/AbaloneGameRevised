@@ -46,6 +46,7 @@ public class AbalonePresenterTest {
 		Collections.sort(jumps, AbalonePresenter.jumpComparator);
 		
 		for(int i = 0; i < jumps.size(); i++) {
+			System.out.println(jumps.get(i));
 			assertEquals(jumps.get(i), targetJumps.get(i));
 		}
 	}

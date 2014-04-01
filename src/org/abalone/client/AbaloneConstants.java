@@ -37,10 +37,8 @@ public class AbaloneConstants {
 	/*
 	 * Keys for the gameApiState {@code Map<String, Object>}
 	 */
-	public static final String TURN = "Turn";
 	public static final String BOARD = "Board";
 	public static final String JUMP = "Jump";
-	public static final String ENDGAME = "EndGame";
 	
 	/* 
 	 * Initial board for initial operations.

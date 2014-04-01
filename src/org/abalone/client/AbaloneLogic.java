@@ -28,6 +28,7 @@ public class AbaloneLogic {
       checkMoveIsLegal(verifyMove);
       return new VerifyMoveDone();
     } catch (Exception e) {
+    	e.printStackTrace(System.out);
       return new VerifyMoveDone(verifyMove.getLastMovePlayerId(), e.getMessage());
     }
   }
@@ -43,8 +44,15 @@ public class AbaloneLogic {
 		
 		if(lastState.isEmpty()){
 			// If no last State, this means that we just started the game.
-			check(lastMovePlayerId == playerIds.get(0), 
+			check(lastMovePlayerId.equals(playerIds.get(0)), 
 					"The player of the initial operations must be the first player!");
+			check(lastMove.size() == 3 && 
+						lastMove.get(0) instanceof SetTurn && 
+						lastMove.get(1) instanceof Set &&
+						lastMove.get(2) instanceof Set, 
+					"The initial operations should contains three operations: SetTurn, Set, Set");
+			System.out.println("Initialization");
+			return;
 		}
 		
 		/*
@@ -59,11 +67,43 @@ public class AbaloneLogic {
 		List<ArrayList<Integer>> jumps = (List<ArrayList<Integer>>) ((Set)lastMove.get(2)).getValue();
 		AbaloneState abaloneStateLast = 
 				AbaloneState.gameApiState2AbaloneState(lastState, turn, playerIds);
+		System.out.println("******" + jumps);
 		AbaloneState abaloneStateNow = 
 				AbaloneState.gameApiState2AbaloneState(state, turn, playerIds);
 		AbaloneState abaloneStateTransformed = abaloneStateLast.applyJumpOnBoard(jumps);
-		check(abaloneStateNow.getBoard().equals(abaloneStateTransformed.getBoard()), 
+		
+		System.out.println("Logic Jump");
+		for(int i = 0; i < jumps.size(); i++){
+			for(int j = 0; j < jumps.get(i).size(); j++) {
+				System.out.print(jumps.get(i).get(j) + " ");
+			}
+			System.out.println();
+		}
+		System.out.println("Logic Board Last");
+		for(int i = 0; i < abaloneStateLast.getBoard().size(); i++){
+			for(int j = 0; j < abaloneStateLast.getBoard().get(i).size(); j++) {
+				System.out.print(abaloneStateLast.getBoard().get(i).get(j) + " ");
+			}
+			System.out.println();
+		}
+		System.out.println("Logic Board Now");
+		for(int i = 0; i < abaloneStateNow.getBoard().size(); i++){
+			for(int j = 0; j < abaloneStateNow.getBoard().get(i).size(); j++) {
+				System.out.print(abaloneStateNow.getBoard().get(i).get(j) + " ");
+			}
+			System.out.println();
+		}
+		System.out.println("Logic Board Transformed");
+		for(int i = 0; i < abaloneStateTransformed.getBoard().size(); i++){
+			for(int j = 0; j < abaloneStateTransformed.getBoard().get(i).size(); j++) {
+				System.out.print(abaloneStateTransformed.getBoard().get(i).get(j) + " ");
+			}
+			System.out.println();
+		}
+		
+		check(abaloneStateNow.equals(abaloneStateTransformed), 
 				"LastState applied lastMove should get current State");		
+		
 		
 		// 2. Focus on the {@code lastMove}
 		check( lastMove.get(0) instanceof SetTurn && 
@@ -78,23 +118,21 @@ public class AbaloneLogic {
 		checkJump(jumps);
 	}
 	
-	private void checkJump(List<ArrayList<Integer>> jumps) {
+	public void checkJump(List<ArrayList<Integer>> jumps) {
 		if(jumps != null && !jumps.isEmpty()) {
 		
 			// 1. check for format, illegal square and score square
 			for(List<Integer> jump : jumps) {
 				check(jump.size() == 5, 
-						"Each jump item should be the format '{startX, startY, endX, endY}'");
+						"Each jump item should be the format '{startX, startY, endX, endY, 0/1}'");
 				check(jump.get(4) == 0 || jump.get(4) == 1, 
 						"Each jump item's last digit should be 0/1 for piece color");
-				check(illegalSquares.contains(Lists.<Integer>newArrayList(jump.get(0), jump.get(1))), 
+				check(!illegalSquares.contains(Lists.<Integer>newArrayList(jump.get(0), jump.get(1))), 
 						"start coordinates should not locate inside illegal squares");
-				check(illegalSquares.contains(Lists.<Integer>newArrayList(jump.get(2), jump.get(3))), 
+				check(!illegalSquares.contains(Lists.<Integer>newArrayList(jump.get(2), jump.get(3))), 
 						"end coordinates should not locate inside illegal squares");
-				check(scoreSquares.contains(Lists.<Integer>newArrayList(jump.get(0), jump.get(1))), 
+				check(!scoreSquares.contains(Lists.<Integer>newArrayList(jump.get(0), jump.get(1))), 
 						"start coordinates should not locate inside score squares");
-				check(scoreSquares.contains(Lists.<Integer>newArrayList(jump.get(2), jump.get(3))), 
-						"end coordinates should not locate inside score squares");
 			}
 			
 			// 2. all the jumps should locate in the one direction.
@@ -105,9 +143,6 @@ public class AbaloneLogic {
 						check(jumps.get(i).get(0) == jumps.get(i - 1).get(0) && 
 									jumps.get(i).get(2) == jumps.get(i - 1).get(2),
 								"Horizontal: X coordinate should be the same!");
-						check(Math.abs(jumps.get(i).get(1) - jumps.get(i - 1).get(1)) == 2 && 
-									Math.abs(jumps.get(i).get(3) - jumps.get(i - 1).get(3)) == 2, 
-								"Horizontal: continuous jumps Y coordinate should have 2 difference");
 					}
 				} else {
 					// diagonal
@@ -130,7 +165,7 @@ public class AbaloneLogic {
 	 * @param lastMovePlayerId
 	 * @return
 	 */
-	String getTurn(List<String> playerIds, String lastMovePlayerId) {
+	public String getTurn(List<String> playerIds, String lastMovePlayerId) {
 		return playerIds.indexOf(lastMovePlayerId) == 0 ? WTurn : BTurn;
 	}
 	/**

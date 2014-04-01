@@ -53,7 +53,15 @@ public class AbaloneState {
 	@SuppressWarnings("unchecked")
 	public AbaloneState applyJumpOnBoard(List<ArrayList<Integer>> jumps) {
 		if(jumps == null || jumps.isEmpty()){
-			return null;
+			return this;
+		}
+		
+		System.out.println("State Jumps");
+		for(int i = 0; i < jumps.size(); i++){
+			for(int j = 0; j < jumps.get(i).size(); j++) {
+				System.out.print(jumps.get(i).get(j) + " ");
+			}
+			System.out.println();
 		}
 		
 		List<ArrayList<String>> newBoard = new ArrayList<ArrayList<String>>();
@@ -88,13 +96,7 @@ public class AbaloneState {
 				newBoard.get(startX).set(startY, AbaloneConstants.E);
 			}
 		}
-		
-		if(youWin) {
-			return new AbaloneState(getOpponentTurn(turn), playerIds, newBoard, jumps, 
-					Optional.fromNullable(youWin));
-		} else {
-			return new AbaloneState(getOpponentTurn(turn), playerIds, newBoard, jumps, null);
-		}
+		return new AbaloneState(turn, playerIds, newBoard, jumps, isGameEnd);
 	}
 	
 	/**
@@ -113,7 +115,8 @@ public class AbaloneState {
 	 * Method used to convert gameApiState, which is transmitted from JSON format messages, to
 	 * the real {@link AbaloneState} object.
 	 * 
-	 * @param gameApiState
+	 * @param gameApiState {"Board" : {@code List<ArrayList<String>>}, 
+	 * 											"Jump" : {@code List<ArrayList<Integer>>}}
 	 * @param turn
 	 * @param playerIds
 	 * @return
@@ -128,7 +131,6 @@ public class AbaloneState {
 		List<ArrayList<String>> board = (List<ArrayList<String>>)gameApiState.get(BOARD);
 		@SuppressWarnings("unchecked")
 		List<ArrayList<Integer>> jump = (List<ArrayList<Integer>>)gameApiState.get(JUMP);
-		
 		return new AbaloneState(turn, playerIds, board, jump, null);
 	}
 	

@@ -1,21 +1,26 @@
 package org.abalone.client;
 
 import static org.abalone.client.AbaloneConstants.B;
+import static org.abalone.client.AbaloneConstants.BOARD;
+import static org.abalone.client.AbaloneConstants.BTurn;
 import static org.abalone.client.AbaloneConstants.E;
 import static org.abalone.client.AbaloneConstants.I;
+import static org.abalone.client.AbaloneConstants.JUMP;
 import static org.abalone.client.AbaloneConstants.S;
 import static org.abalone.client.AbaloneConstants.W;
-import static org.abalone.client.AbaloneConstants.BTurn;
 import static org.abalone.client.AbaloneConstants.WTurn;
+import static org.abalone.client.AbaloneConstants.initialBoard;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.Test;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 public class AbaloneStateTest {
 
@@ -101,4 +106,38 @@ public class AbaloneStateTest {
 		assertTrue(afterState.getIsGameEnd().get());
 	}
 
+	@SuppressWarnings("unchecked")
+	@Test
+	public void testAbaloneStateEqual() {
+		String turn1 = WTurn;
+		String turn2 = WTurn;
+		List<String> playerIds1 = Lists.newArrayList("123", "345");
+		List<String> playerIds2 = Lists.newArrayList("123", "345");
+		List<ArrayList<Integer>> jump1 = Lists.<ArrayList<Integer>>newArrayList(
+				Lists.newArrayList(4,5,6,7,0));
+		List<ArrayList<Integer>> jump2 = Lists.<ArrayList<Integer>>newArrayList(
+				Lists.newArrayList(4,5,6,7,0));
+		AbaloneState abaloneState1 = new AbaloneState(turn1, playerIds1, initialBoard, jump1, null);
+		AbaloneState abaloneState2 = new AbaloneState(turn2, playerIds2, initialBoard, jump2, null);
+		assertTrue(abaloneState1.equals(abaloneState2));
+		assertEquals(abaloneState1, abaloneState2);
+	}
+	
+	@SuppressWarnings("unchecked")
+	@Test
+	public void testGameApiState2AbaloneState() {
+		String turn = WTurn;
+		List<String> playerIds = Lists.newArrayList("123", "345");
+		List<ArrayList<Integer>> jump = Lists.<ArrayList<Integer>>newArrayList(
+				Lists.newArrayList(4,5,6,7,0));
+		AbaloneState abaloneState = new AbaloneState(turn, playerIds, initialBoard, jump, null);
+		Map<String, Object> gameApiState = Maps.<String, Object>newHashMap();
+		gameApiState.put(BOARD, initialBoard);
+		gameApiState.put(JUMP, jump);
+		
+		assertEquals(
+				abaloneState, 
+				AbaloneState.gameApiState2AbaloneState(gameApiState, turn, playerIds)
+		);
+	}
 }
